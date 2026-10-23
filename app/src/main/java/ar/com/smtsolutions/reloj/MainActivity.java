@@ -99,7 +99,10 @@ public class MainActivity extends Activity {
             public void onPageStarted(WebView v, String url, Bitmap icono) { barra.setVisibility(View.VISIBLE); }
 
             @Override
-            public void onPageFinished(WebView v, String url) { barra.setVisibility(View.GONE); }
+            public void onPageCommitVisible(WebView v, String url) { ocultarCartel(); }
+
+            @Override
+            public void onPageFinished(WebView v, String url) { barra.setVisibility(View.GONE); ocultarCartel(); }
 
             @Override
             public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
@@ -151,6 +154,16 @@ public class MainActivity extends Activity {
     private void cargar() {
         if (!hayInternet()) { mostrarSinConexion(); return; }
         web.loadUrl(BuildConfig.URL_INICIO);
+    }
+
+    // Oculta el aviso azul "Un usuario de Google Apps Script creó esta aplicación" dentro de nuestra app.
+    private static final String SIN_CARTEL = "(function(){try{if(document.getElementById('smt-sin-cartel'))return;"
+            + "var s=document.createElement('style');s.id='smt-sin-cartel';"
+            + "s.textContent='#warning,.warning-bar{display:none!important}#warning-bar-table>tbody>tr:first-child{display:none!important}';"
+            + "(document.head||document.documentElement).appendChild(s);}catch(e){}})();";
+
+    private void ocultarCartel() {
+        try { web.evaluateJavascript(SIN_CARTEL, null); } catch (Exception e) { /* nada */ }
     }
 
     private boolean esInterno(Uri u) {
