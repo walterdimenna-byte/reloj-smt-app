@@ -1,0 +1,49 @@
+name: Compilar APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+
+      - name: Compilar las dos apps
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Poner nombres claros
+        run: |
+          mkdir -p salida
+          cp app/build/outputs/apk/reloj/release/*.apk salida/Reloj-SMT.apk
+          cp app/build/outputs/apk/panel/release/*.apk salida/Panel-SMT.apk
+          ls -la salida
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apks-smt
+          path: salida/*.apk
+
+      - name: Publicar para descargar
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.${{ github.run_number }}
+          name: Reloj SMT ${{ github.run_number }}
+          body: |
+            Reloj-SMT.apk = app para fichar (empleados).
+            Panel-SMT.apk = panel de control (encargado, pide la clave del panel).
+          files: salida/*.apk

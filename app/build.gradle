@@ -1,0 +1,59 @@
+plugins { id 'com.android.application' }
+
+// Número de versión: lo pone GitHub en cada compilación (o 1 si se compila a mano).
+def nro = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+
+android {
+    namespace 'ar.com.smtsolutions.reloj'
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 24
+        targetSdk 34
+        versionCode nro
+        versionName "1.${nro}"
+    }
+
+    signingConfigs {
+        smt {
+            storeFile file('../firma/smt-reloj.jks')
+            storePassword System.getenv('FIRMA_CLAVE') ?: 'smtreloj2026'
+            keyAlias 'smt'
+            keyPassword System.getenv('FIRMA_CLAVE') ?: 'smtreloj2026'
+        }
+    }
+
+    flavorDimensions 'app'
+    productFlavors {
+        reloj {
+            dimension 'app'
+            applicationId 'ar.com.smtsolutions.reloj'
+            resValue 'string', 'app_name', 'Reloj SMT'
+            buildConfigField 'String', 'URL_INICIO', '"https://script.google.com/macros/s/AKfycby2s8IhKthdm0G1UDjQ2Ctu6uUPFnw42MYM9MjhFSYztUFDYa_zYu_eEVtVBtjvwTMl/exec"'
+            buildConfigField 'boolean', 'ES_PANEL', 'false'
+        }
+        panel {
+            dimension 'app'
+            applicationId 'ar.com.smtsolutions.panel'
+            resValue 'string', 'app_name', 'Panel SMT'
+            buildConfigField 'String', 'URL_INICIO', '"https://script.google.com/macros/s/AKfycby2s8IhKthdm0G1UDjQ2Ctu6uUPFnw42MYM9MjhFSYztUFDYa_zYu_eEVtVBtjvwTMl/exec?vista=panel"'
+            buildConfigField 'boolean', 'ES_PANEL', 'true'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.smt
+        }
+    }
+    buildFeatures { buildConfig true }
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
