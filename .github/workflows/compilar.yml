@@ -26,7 +26,7 @@ jobs:
       - name: Compilar las tres apps
         run: |
           set -o pipefail
-          gradle assembleRelease --no-daemon 2>&1 | tee build.log || { grep -E "error:|What went wrong|\.java:[0-9]+|> " -A3 build.log | head -40 | while IFS= read -r l; do echo "::error::$l"; done; exit 1; }
+          gradle assembleRelease --no-daemon 2>&1 | tee build.log || { grep -vE "^> Task|^$" build.log | grep -E "error:|What went wrong|FAILURE|\.java:[0-9]+|Execution failed|Could not" -A5 | head -40 | while IFS= read -r l; do echo "::error::$l"; done; exit 1; }
 
       - name: Poner nombres claros
         run: |
