@@ -3,7 +3,10 @@ package ar.com.smtsolutions.reloj;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.hardware.Sensor;
@@ -15,6 +18,9 @@ import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.PowerManager;
 import android.speech.tts.TextToSpeech;
 import android.view.View;
 import android.view.ViewGroup;
@@ -54,6 +60,14 @@ public class MainActivity extends Activity {
 
     // Terminal de la entrada: sensor para despertar la pantalla (proximidad y, de respaldo, luz).
     private SensorManager sensores;
+    private final Handler mano = new Handler(Looper.getMainLooper());
+    // Si alguien apaga la pantalla con el botón, la terminal se vuelve a prender sola a los 2 segundos.
+    private final BroadcastReceiver pantallaApagada = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context c, Intent i) {
+            if (Intent.ACTION_SCREEN_OFF.equals(i.getAction())) mano.postDelayed(MainActivity.this::prenderPantalla, 2000);
+        }
+    };
     private volatile long ultimoSensor = 0;
     private boolean cerca = false;
     private float luzMedia = -1;
@@ -96,6 +110,7 @@ public class MainActivity extends Activity {
             if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true); }
             else getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
             sensores = (SensorManager) getSystemService(SENSOR_SERVICE);
+            registerReceiver(pantallaApagada, new IntentFilter(Intent.ACTION_SCREEN_OFF));
         }
 
         WebSettings s = web.getSettings();
@@ -186,6 +201,18 @@ public class MainActivity extends Activity {
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState);
         else cargar();
+    }
+
+    @SuppressWarnings("deprecation")
+    private void prenderPantalla() {
+        try {
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            if (pm.isInteractive()) return;
+            PowerManager.WakeLock wl = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE, "smt:terminal");
+            wl.acquire(5000);
+            Intent v = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(v);
+        } catch (Exception e) { /* nada */ }
     }
 
     private void cargar() {
@@ -297,6 +324,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (BuildConfig.ES_TERMINAL) { try { unregisterReceiver(pantallaApagada); } catch (Exception e) { } mano.removeCallbacksAndMessages(null); }
         if (voz != null) voz.shutdown();
         if (web != null) web.destroy();
         super.onDestroy();
