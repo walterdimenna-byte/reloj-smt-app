@@ -62,8 +62,19 @@ android {
         checkReleaseBuilds false
         abortOnError false
     }
+    androidResources { noCompress 'tflite' }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+dependencies {
+    // Reconocimiento de rostro: solo en la app Terminal SMT
+    terminalImplementation 'androidx.activity:activity:1.8.2'
+    terminalImplementation 'androidx.camera:camera-camera2:1.3.4'
+    terminalImplementation 'androidx.camera:camera-lifecycle:1.3.4'
+    terminalImplementation 'androidx.camera:camera-view:1.3.4'
+    terminalImplementation 'com.google.mlkit:face-detection:16.1.6'
+    terminalImplementation 'org.tensorflow:tensorflow-lite:2.14.0'
 }

@@ -367,6 +367,41 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String ultimoSensor() { return String.valueOf(ultimoSensor); }
 
+        /** Reconocimiento de rostro (solo Terminal SMT): abre la cámara para registrar o verificar la cara de alguien. */
+        @JavascriptInterface
+        public boolean rostroDisponible() { return BuildConfig.ES_TERMINAL; }
+
+        @JavascriptInterface
+        public boolean rostroTiene(String nombre) {
+            return getSharedPreferences("caras", MODE_PRIVATE).contains(String.valueOf(nombre));
+        }
+
+        @JavascriptInterface
+        public void rostroBorrar(String nombre) {
+            getSharedPreferences("caras", MODE_PRIVATE).edit().remove(String.valueOf(nombre)).apply();
+        }
+
+        @JavascriptInterface
+        public void rostroIniciar(final String modo, final String nombre, final String id) {
+            if (!BuildConfig.ES_TERMINAL) return;
+            getSharedPreferences("rostro", MODE_PRIVATE).edit().remove("res").apply();
+            runOnUiThread(() -> {
+                try {
+                    Intent i = new Intent().setClassName(getPackageName(), "ar.com.smtsolutions.reloj.CaraActivity");
+                    i.putExtra("modo", modo).putExtra("nombre", nombre).putExtra("id", id);
+                    startActivity(i);
+                } catch (Exception e) {
+                    getSharedPreferences("rostro", MODE_PRIVATE).edit().putString("res", "{\"id\":\"" + id + "\",\"ok\":false,\"motivo\":\"No se pudo abrir la cámara\"}").apply();
+                }
+            });
+        }
+
+        /** Resultado del último reconocimiento (JSON) o "" si todavía no terminó. */
+        @JavascriptInterface
+        public String rostroResultado() {
+            return getSharedPreferences("rostro", MODE_PRIVATE).getString("res", "");
+        }
+
         /** Brillo de la pantalla: 0 = mínimo (dormida), -1 = el normal del celular. */
         @JavascriptInterface
         public void brillo(final float v) {
