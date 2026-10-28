@@ -61,6 +61,10 @@ public class MainActivity extends Activity {
     // Terminal de la entrada: sensor para despertar la pantalla (proximidad y, de respaldo, luz).
     private SensorManager sensores;
     private final Handler mano = new Handler(Looper.getMainLooper());
+    private PowerManager.WakeLock despierta;   // mantiene el sensor escuchando aunque apaguen la pantalla
+    private void prenderSiApagada() {
+        try { if (!((PowerManager) getSystemService(POWER_SERVICE)).isInteractive()) mano.post(this::prenderPantalla); } catch (Exception e) { }
+    }
     // Si alguien apaga la pantalla con el botón, la terminal se vuelve a prender sola a los 2 segundos.
     private final BroadcastReceiver pantallaApagada = new BroadcastReceiver() {
         @Override
@@ -76,13 +80,13 @@ public class MainActivity extends Activity {
         public void onSensorChanged(SensorEvent ev) {
             if (ev.sensor.getType() == Sensor.TYPE_PROXIMITY) {
                 boolean ahora = ev.values[0] < Math.min(5f, ev.sensor.getMaximumRange());
-                if (ahora && !cerca) ultimoSensor = System.currentTimeMillis();
+                if (ahora && !cerca) { ultimoSensor = System.currentTimeMillis(); prenderSiApagada(); }
                 cerca = ahora;
             } else if (ev.sensor.getType() == Sensor.TYPE_LIGHT) {
                 float lux = ev.values[0];
                 if (luzMedia < 0) { luzMedia = lux; return; }
                 // Una mano que tapa el celular hace caer mucho la luz de golpe.
-                if (luzMedia > 8 && lux < luzMedia * 0.35f && System.currentTimeMillis() - ultimoSensor > 1500) ultimoSensor = System.currentTimeMillis();
+                if (luzMedia > 8 && lux < luzMedia * 0.35f && System.currentTimeMillis() - ultimoSensor > 1500) { ultimoSensor = System.currentTimeMillis(); prenderSiApagada(); }
                 luzMedia = luzMedia * 0.9f + lux * 0.1f;
             }
         }
@@ -111,6 +115,14 @@ public class MainActivity extends Activity {
             else getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
             sensores = (SensorManager) getSystemService(SENSOR_SERVICE);
             registerReceiver(pantallaApagada, new IntentFilter(Intent.ACTION_SCREEN_OFF));
+            try {
+                despierta = ((PowerManager) getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "smt:sensor");
+                despierta.acquire();
+            } catch (Exception e) { despierta = null; }
+            Sensor p0 = sensores.getDefaultSensor(Sensor.TYPE_PROXIMITY);
+            Sensor l0 = sensores.getDefaultSensor(Sensor.TYPE_LIGHT);
+            if (p0 != null) sensores.registerListener(oyente, p0, SensorManager.SENSOR_DELAY_NORMAL);
+            if (l0 != null) sensores.registerListener(oyente, l0, SensorManager.SENSOR_DELAY_NORMAL);
         }
 
         WebSettings s = web.getSettings();
@@ -291,7 +303,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (sensores != null) {
+        if (sensores != null && !BuildConfig.ES_TERMINAL) {
             Sensor p = sensores.getDefaultSensor(Sensor.TYPE_PROXIMITY);
             Sensor l = sensores.getDefaultSensor(Sensor.TYPE_LIGHT);
             if (p != null) sensores.registerListener(oyente, p, SensorManager.SENSOR_DELAY_NORMAL);
@@ -318,13 +330,18 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
-        if (sensores != null) sensores.unregisterListener(oyente);
+        if (sensores != null && !BuildConfig.ES_TERMINAL) sensores.unregisterListener(oyente);
         CookieManager.getInstance().flush();
     }
 
     @Override
     protected void onDestroy() {
-        if (BuildConfig.ES_TERMINAL) { try { unregisterReceiver(pantallaApagada); } catch (Exception e) { } mano.removeCallbacksAndMessages(null); }
+        if (BuildConfig.ES_TERMINAL) {
+            try { unregisterReceiver(pantallaApagada); } catch (Exception e) { }
+            mano.removeCallbacksAndMessages(null);
+            if (sensores != null) sensores.unregisterListener(oyente);
+            try { if (despierta != null && despierta.isHeld()) despierta.release(); } catch (Exception e) { }
+        }
         if (voz != null) voz.shutdown();
         if (web != null) web.destroy();
         super.onDestroy();
