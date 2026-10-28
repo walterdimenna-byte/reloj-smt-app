@@ -6,6 +6,10 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
@@ -14,6 +18,7 @@ import android.os.Bundle;
 import android.speech.tts.TextToSpeech;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
@@ -47,6 +52,30 @@ public class MainActivity extends Activity {
     private TextToSpeech voz;
     private boolean vozLista = false;
 
+    // Terminal de la entrada: sensor para despertar la pantalla (proximidad y, de respaldo, luz).
+    private SensorManager sensores;
+    private volatile long ultimoSensor = 0;
+    private boolean cerca = false;
+    private float luzMedia = -1;
+    private final SensorEventListener oyente = new SensorEventListener() {
+        @Override
+        public void onSensorChanged(SensorEvent ev) {
+            if (ev.sensor.getType() == Sensor.TYPE_PROXIMITY) {
+                boolean ahora = ev.values[0] < Math.min(5f, ev.sensor.getMaximumRange());
+                if (ahora && !cerca) ultimoSensor = System.currentTimeMillis();
+                cerca = ahora;
+            } else if (ev.sensor.getType() == Sensor.TYPE_LIGHT) {
+                float lux = ev.values[0];
+                if (luzMedia < 0) { luzMedia = lux; return; }
+                // Una mano que tapa el celular hace caer mucho la luz de golpe.
+                if (luzMedia > 8 && lux < luzMedia * 0.35f && System.currentTimeMillis() - ultimoSensor > 1500) ultimoSensor = System.currentTimeMillis();
+                luzMedia = luzMedia * 0.9f + lux * 0.1f;
+            }
+        }
+        @Override
+        public void onAccuracyChanged(Sensor s, int a) { }
+    };
+
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,6 +89,14 @@ public class MainActivity extends Activity {
         FrameLayout.LayoutParams pb = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 8);
         raiz.addView(barra, pb);
         setContentView(raiz);
+
+        if (BuildConfig.ES_TERMINAL) {
+            // Siempre prendida y por encima del bloqueo: la página decide cuándo ponerse en negro con brillo mínimo.
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true); }
+            else getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+            sensores = (SensorManager) getSystemService(SENSOR_SERVICE);
+        }
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -143,7 +180,7 @@ public class MainActivity extends Activity {
         });
 
         // Pedir la ubicación de entrada (solo la app de fichar), así al tocar "Fichar" ya está concedida.
-        if (!BuildConfig.ES_PANEL && !tieneUbicacion()) {
+        if (!BuildConfig.ES_PANEL && !BuildConfig.ES_TERMINAL && !tieneUbicacion()) {
             requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, PEDIR_UBICACION);
         }
 
@@ -219,8 +256,30 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (BuildConfig.ES_TERMINAL) return;   // la terminal no se cierra con "atrás"
         if (web.canGoBack()) web.goBack();
         else super.onBackPressed();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (sensores != null) {
+            Sensor p = sensores.getDefaultSensor(Sensor.TYPE_PROXIMITY);
+            Sensor l = sensores.getDefaultSensor(Sensor.TYPE_LIGHT);
+            if (p != null) sensores.registerListener(oyente, p, SensorManager.SENSOR_DELAY_NORMAL);
+            if (l != null) sensores.registerListener(oyente, l, SensorManager.SENSOR_DELAY_NORMAL);
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean foco) {
+        super.onWindowFocusChanged(foco);
+        if (foco && BuildConfig.ES_TERMINAL) {
+            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+        }
     }
 
     @Override
@@ -232,6 +291,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        if (sensores != null) sensores.unregisterListener(oyente);
         CookieManager.getInstance().flush();
     }
 
@@ -254,5 +314,22 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public boolean esApp() { return true; }
+
+        @JavascriptInterface
+        public boolean esTerminal() { return BuildConfig.ES_TERMINAL; }
+
+        /** Cuándo fue la última vez que alguien pasó la mano por el sensor (milisegundos; 0 = nunca). */
+        @JavascriptInterface
+        public String ultimoSensor() { return String.valueOf(ultimoSensor); }
+
+        /** Brillo de la pantalla: 0 = mínimo (dormida), -1 = el normal del celular. */
+        @JavascriptInterface
+        public void brillo(final float v) {
+            runOnUiThread(() -> {
+                WindowManager.LayoutParams lp = getWindow().getAttributes();
+                lp.screenBrightness = v < 0 ? WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE : Math.min(1f, v);
+                getWindow().setAttributes(lp);
+            });
+        }
     }
 }

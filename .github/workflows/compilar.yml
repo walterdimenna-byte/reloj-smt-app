@@ -23,7 +23,7 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Compilar las dos apps
+      - name: Compilar las tres apps
         run: gradle assembleRelease --no-daemon --stacktrace
 
       - name: Poner nombres claros
@@ -31,6 +31,7 @@ jobs:
           mkdir -p salida
           cp app/build/outputs/apk/reloj/release/*.apk salida/Reloj-SMT.apk
           cp app/build/outputs/apk/panel/release/*.apk salida/Panel-SMT.apk
+          cp app/build/outputs/apk/terminal/release/*.apk salida/Terminal-SMT.apk
           ls -la salida
 
       - uses: actions/upload-artifact@v4
@@ -46,4 +47,5 @@ jobs:
           body: |
             Reloj-SMT.apk = app para fichar (empleados).
             Panel-SMT.apk = panel de control (encargado, pide la clave del panel).
+            Terminal-SMT.apk = celular fijo de la entrada (nombre + PIN, se duerme y despierta con el sensor).
           files: salida/*.apk
